@@ -1,0 +1,125 @@
+import os
+import tarfile
+import tkinter as tk
+from tkinter import scrolledtext, messagebox
+import sys
+
+
+class ShellEmulator:
+    def __init__(self, tar_file):
+        self.tar_file = tar_file
+        self.current_path = '/'
+        self.file_structure = self.get_file_structure_from_tar()
+
+    def get_file_structure_from_tar(self):
+        structure = {}
+        with tarfile.open(self.tar_file, 'r') as tar:
+            for member in tar.getmembers():
+                path = member.name
+
+                # Если это директория, добавляем её в структуру
+                if member.isdir():
+                    structure[path] = []
+                elif member.isfile():
+                    parent_dir = os.path.dirname(path)
+                    if parent_dir not in structure:
+                        structure[parent_dir] = []
+                    structure[parent_dir].append(member.name)
+        return structure
+
+    def list_directory(self):
+        return self.file_structure.get(self.current_path, [])
+
+    def change_directory(self, path):
+        if path == "..":
+            self.current_path = os.path.dirname(self.current_path.rstrip('/'))
+            return f"Now in directory: {self.current_path or '/'}"
+        elif path in self.file_structure:
+            self.current_path = path
+            return f"Now in directory: {self.current_path}"
+        return "Error: directory not found."
+
+    def head_file(self, filename):
+        full_path = os.path.join(self.current_path, filename)
+        if full_path in self.file_structure:
+            return self.file_structure[full_path][:10]
+        return f"Error: file '{filename}' not found."
+
+    def remove_file(self, filename):
+        full_path = os.path.join(self.current_path, filename)
+        if full_path in self.file_structure:
+            del self.file_structure[full_path]
+            return f"File '{filename}' removed."
+        return f"Error: file '{filename}' not found."
+
+    def exit_emulator(self):
+        return "Exiting emulator."
+
+
+class ShellGUI:
+    def __init__(self, master, emulator):
+        self.master = master
+        self.emulator = emulator
+        master.title("CLI Emulator")
+
+        # Output area
+        self.output_area = scrolledtext.ScrolledText(master, wrap=tk.WORD, width=60, height=20)
+        self.output_area.pack(pady=10)
+        self.output_area.config(state=tk.DISABLED)
+
+        # Command entry
+        self.command_entry = tk.Entry(master, width=60)
+        self.command_entry.pack(pady=10)
+        self.command_entry.bind('<Return>', self.execute_command)
+
+        self.output_area.config(state=tk.NORMAL)
+        self.output_area.insert(tk.END, "Available commands: ls, cd <folder>, head <file>, rm <file>, exit\n")
+        self.output_area.insert(tk.END, f"Current directory: {self.emulator.current_path}\n")
+        self.output_area.config(state=tk.DISABLED)
+
+    def execute_command(self, event):
+        command = self.command_entry.get().strip()
+        self.command_entry.delete(0, tk.END)
+
+        self.output_area.config(state=tk.NORMAL)
+        self.output_area.insert(tk.END, f"{self.emulator.current_path}$ {command}\n")
+
+        if command == "ls":
+            response = "\n".join(self.emulator.list_directory())
+        elif command.startswith("cd "):
+            path = command.split(" ", 1)[1] if " " in command else ""
+            response = self.emulator.change_directory(path)
+        elif command.startswith("head "):
+            filename = command.split(" ", 1)[1]
+            response = "\n".join(self.emulator.head_file(filename))
+        elif command.startswith("rm "):
+            filename = command.split(" ", 1)[1]
+            response = self.emulator.remove_file(filename)
+        elif command == "exit":
+            response = self.emulator.exit_emulator()
+            self.master.quit()
+        else:
+            response = f"Error: command '{command}' not recognized."
+
+        self.output_area.insert(tk.END, response + '\n')
+        self.output_area.insert(tk.END, f"{self.emulator.current_path}$ ")
+        self.output_area.config(state=tk.DISABLED)
+        self.command_entry.focus()
+
+
+if __name__ == "__main__":
+    if len(sys.argv) < 3:
+        print("Usage: python cli_emulator.py <username> <path_to_tarfile>")
+        sys.exit(1)
+
+    username, tar_file = sys.argv[1], sys.argv[2]
+
+    try:
+        emulator = ShellEmulator(tar_file)
+    except Exception as e:
+        print(f"Error: {str(e)}")
+        sys.exit(1)
+
+    root = tk.Tk()
+    gui = ShellGUI(root, emulator)
+    root.mainloop()
