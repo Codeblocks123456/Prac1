@@ -1,0 +1,58 @@
+import os
+import sys
+import subprocess
+from git import Repo
+
+def get_commits_with_file(repo_path, file_name):
+    repo = Repo(repo_path)
+    commits = list(repo.iter_commits())
+    relevant_commits = []
+
+    for commit in commits:
+        if file_name in commit.stats.files:
+            relevant_commits.append(commit)
+
+    return relevant_commits
+
+def generate_plantuml_graph(commits):
+    plantuml_code = "@startuml\n"
+
+    for commit in commits:
+        plantuml_code += f'"{commit.hexsha[:7]}" as {commit.hexsha[:7]}\n'
+
+    for i in range(len(commits) - 1):
+        plantuml_code += f'{commits[i].hexsha[:7]} --> {commits[i + 1].hexsha[:7]}\n'
+
+    plantuml_code += "@enduml"
+    return plantuml_code
+
+def visualize_graph(plantuml_code, visualizer_path):
+    with open("temp_diagram.puml", "w") as f:
+        f.write(plantuml_code)
+
+    subprocess.run([visualizer_path, "temp_diagram.puml"])
+
+def main():
+    if len(sys.argv) != 4:
+        print("Usage: python dependency_visualizer.py <path_to_visualizer> <path_to_repo> <file_name>")
+        sys.exit(1)
+
+    visualizer_path = sys.argv[1]
+    repo_path = sys.argv[2]
+    file_name = sys.argv[3]
+
+    if not os.path.exists(repo_path):
+        print(f"Repository path '{repo_path}' does not exist.")
+        sys.exit(1)
+
+    commits = get_commits_with_file(repo_path, file_name)
+    
+    if not commits:
+        print(f"No commits found for file '{file_name}'.")
+        sys.exit(1)
+
+    plantuml_code = generate_plantuml_graph(commits)
+    visualize_graph(plantuml_code, visualizer_path)
+
+if __name__ == "__main__":
+    main()
