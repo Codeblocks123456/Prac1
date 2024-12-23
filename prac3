@@ -1,0 +1,99 @@
+import re
+import sys
+import xml.etree.ElementTree as ET
+from xml.dom import minidom
+
+class ConfigParser:
+    def __init__(self):
+        self.constants = {}
+        self.patterns = {
+            'dict': re.compile(r'\(\s*\[\s*([^()]+)\s*\]\s*\)'),
+            'constant': re.compile(r'\(def\s+([_a-zA-Z][\w]*)\s+([^;]+)\s*\);'),
+            'expression': re.compile(r'\$\((\+|min|mod)\s+([_a-zA-Z][\w]*)\s+([_a-zA-Z][\w]*)\)'),
+            'assignment': re.compile(r'([_a-zA-Z][\w]*)\s*:\s*([^,]+)')
+        }
+
+    def parse(self, input_text):
+        lines = input_text.strip().split('\n')
+        for line in lines:
+            line = line.strip()
+            if line.startswith('(def'):
+                self._parse_constant(line)
+            elif line.startswith('(['):
+                self._parse_dictionary(line)
+
+    def _parse_constant(self, line):
+        match = self.patterns['constant'].match(line)
+        if not match:
+
+            return
+        name, value = match.groups()
+        self.constants[name] = value.strip().strip('"')
+
+    def _parse_dictionary(self, line):
+        match = self.patterns['dict'].match(line)
+        if not match:
+            return
+        contents = match.group(1)
+        pairs = [pair.strip() for pair in contents.split(',') if pair.strip()]
+        for pair in pairs:
+            if pair:
+                self._parse_assignment(pair)
+
+    def _parse_assignment(self, pair):
+        match = self.patterns['assignment'].match(pair)
+        if not match:
+            return
+        name, value = match.groups()
+        self.constants[name] = value.strip()
+
+    def calculate_expression(self, expression):
+        match = self.patterns['expression'].match(expression)
+        if not match:
+            return None
+
+        operation = match.group(1)
+        arg1 = match.group(2)
+        arg2 = match.group(3)
+
+        val1 = self._get_value(arg1)
+        val2 = self._get_value(arg2)
+
+        if operation == '+':
+            return val1 + val2
+        elif operation == 'min':
+            return min(val1, val2)
+        elif operation == 'mod':
+            return val1 % val2
+
+    def _get_value(self, name):
+        if name.isdigit():
+            return int(name)
+        elif name in self.constants:
+            return int(self.constants[name])
+        else:
+            return None
+
+    def generate_xml(self):
+        root = ET.Element("config")
+        for name, value in self.constants.items():
+            const_elem = ET.Element("constant")
+            const_elem.set("name", name)
+            const_elem.text = value
+            root.append(const_elem)
+
+
+        xml_str = ET.tostring(root, encoding='unicode')
+
+
+        parsed_xml = minidom.parseString(xml_str)
+        pretty_xml = parsed_xml.toprettyxml(indent="    ")
+
+        return pretty_xml
+
+if __name__ == "__main__":
+    input_text = sys.stdin.read()
+    parser = ConfigParser()
+    parser.parse(input_text)
+    xml_output = parser.generate_xml()
+    print(xml_output)
